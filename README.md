@@ -30,7 +30,9 @@ Liu等人将近代NLP技术的发展总结为四种范式[^1]，分别为：
 
 ## 3.1 Bert + TextCNN
 
-现在实现了这个，这是范式3的做法
+现在实现了这个，这是范式3的做法。
+
+Bert模型[^2]是一个预训练的语言模型，我们只是拿来微调了一下，并结合我们文本分类的任务，在模型的特征输出层之后，接了一个TextCNN层[^3]提取文本的特征。
 
 ## 3.2 词向量+LSTM
 
@@ -66,9 +68,16 @@ CUDA_VISIBLE_DEVICES=2 nohup python -m src.pipeline.test --batch_size 16 --ckpt 
 
 # 5.结果
 
+在线下测试，采用的是训练集的2000条测试的，Bert的`F1`分数是0.77
 
+Bert的在线测试结果是0.72，如下图:
+
+![](./pic/bert_result.png)
 
 # 参考文献
 
-[^1]: Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi,and Graham Neubig. Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing. ArXiv,abs/2107.13586, 2021.
+[^1]: Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi,and Graham Neubig. Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing. ArXiv, abs/2107.13586, 2021.
 
+[^2]: Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers),pages 4171–4186, Minneapolis, Minnesota, June 2019. Association for Computational Linguistics.
+
+[^3]: Yoon Kim. Convolutional neural networks for sentence classification. In Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP), pages 1746–1751, Doha, Qatar,October 2014. Association for Computational Linguistics.
