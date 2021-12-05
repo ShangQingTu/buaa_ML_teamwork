@@ -1,0 +1,1 @@
+state_dict rawk kernel_size, v[2, 3, 4]k dropout, v0.3k num_topics, v3k max_input_len, v100k out_channels, v2
