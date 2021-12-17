@@ -28,8 +28,9 @@ six @ file:///home/conda/feedstock_root/build_artifacts/six_1620240208055/work
 sklearn==0.0
 threadpoolctl==3.0.0
 tokenizers==0.10.3
-torch==1.8.0
+torch==1.8.0+cu111
 torchaudio==0.8.0a0+a751e1d
+torchtext==0.9.0
 torchvision==0.9.0
 tqdm==4.62.3
 transformers==4.5.0
