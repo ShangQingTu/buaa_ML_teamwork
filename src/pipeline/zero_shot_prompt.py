@@ -149,6 +149,7 @@ if __name__ == '__main__':
     # path parameters
     parser.add_argument('--data-dir', type=str, default='./data/')
     parser.add_argument('--save-dir', type=str, default='./ckpt')
+    parser.add_argument('--seed', type=int, default=666666, help='random seed')
     parser.add_argument('--pretrained-model', type=str, default=src.models.albert.pretrained)
     args = parser.parse_args()
     args.df_train_path = os.path.join(args.data_dir, "Train.csv")

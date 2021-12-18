@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data._utils.collate import default_collate
+import copy
 from typing import *
 from transformers.utils.dummy_pt_objects import PreTrainedModel
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -36,7 +36,7 @@ class ManualTemplate(nn.Module):
     def incorporate_text_example(self,
                                  example: InputExample
                                  ):
-        text = self.text.copy()
+        text = copy.deepcopy(self.text)
         for i, d in enumerate(text):
             if 'placeholder' in d:
                 text[i] = d["add_prefix_space"] + d.get("post_processing", lambda x: x)(

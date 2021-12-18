@@ -74,6 +74,14 @@ Bert的在线测试结果是0.72，如下图:
 
 ![](./pic/bert_result.png)
 
+bi-lstm训练20个epoch的线下准确率(accuracy)是0.92，在线测试`F1`分数是0.31
+
+bi-lstm训练4个epoch的线下准确率(accuracy)是0.78，在线测试`F1`分数是0.32
+
+说明bi-lstm非常容易过拟合
+
+
+
 # 参考文献
 
 [^1]: Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi,and Graham Neubig. Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing. ArXiv, abs/2107.13586, 2021.

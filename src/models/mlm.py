@@ -197,7 +197,7 @@ class MLMTokenizerWrapper(TokenizerWrapper):
         return self._num_specials
 
     def tokenize_one_example(self, wrapped_example, teacher_forcing):
-        ''' # TODO doens't consider the situation that input has two parts
+        '''
         '''
 
         wrapped_example, others = wrapped_example
