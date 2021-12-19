@@ -68,11 +68,15 @@ CUDA_VISIBLE_DEVICES=2 nohup python -m src.pipeline.test --batch_size 16 --ckpt 
 
 # 5.结果
 
+- bert
+
 在线下测试，采用的是训练集的2000条测试的，Bert的`F1`分数是0.77
 
 Bert的在线测试结果是0.72，如下图:
 
 ![](./pic/bert_result.png)
+
+- bi-lstm
 
 bi-lstm训练20个epoch的线下准确率(accuracy)是0.92，在线测试`F1`分数是0.31
 
@@ -80,7 +84,23 @@ bi-lstm训练4个epoch的线下准确率(accuracy)是0.78，在线测试`F1`分�
 
 说明bi-lstm非常容易过拟合
 
+- prompt
 
+prompt采用的模板是`{"placeholder":"text_a"} It was {"mask"}`
+
+用一个词到标签的关系来把`mask`位置的预测词映射到情感标签上，采用的映射关系是:
+
+```python
+label_words = {
+    "negative": ["bad"],
+    "neutral": ["normal"],
+    "positive": ["good", "wonderful", "great"],
+}
+```
+
+由于我们只是设定了模板和映射关系，完全没有改变模型的参数，我们也完全没有使用训练集里的数据，所以这样是一个无监督的过程。获取的在线测试`F1`分数是0.3078，和baseline差不多。
+
+总体来看，还是`预训练+微调`的范式能够在**有训练数据**的情感分类任务中取得最高的分数。
 
 # 参考文献
 

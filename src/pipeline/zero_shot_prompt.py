@@ -11,7 +11,7 @@ import numpy as np
 import shutil
 import os
 import pandas as pd
-import logging
+from tqdm import tqdm
 from sklearn.metrics import f1_score
 import src.models.albert
 from src.models.mlm import MLMTokenizerWrapper, InputExample
@@ -24,21 +24,6 @@ classes = [  # There are two classes in Sentiment Analysis, one for negative and
     "positive"
 ]
 
-dataset = [  # For simplicity, there's only two examples
-    # text_a is the input text of the data, some other datasets may have multiple input sentences in one example.
-    InputExample(
-        guid=0,
-        text_a="Albert Einstein was one of the greatest intellects of his time.",
-    ),
-    InputExample(
-        guid=1,
-        text_a="The film was just fine.",
-    ),
-    InputExample(
-        guid=2,
-        text_a="The film was badly made.",
-    ),
-]
 label_words = {
     "negative": ["bad"],
     "neutral": ["normal"],
@@ -110,6 +95,11 @@ def add_special_tokens(model: PreTrainedModel,
 
 
 def work(args):
+    # load data set
+    dataset = []
+    test_data = pd.read_csv(args.df_test_path)
+    for i, text in enumerate(test_data['text']):
+        dataset.append(InputExample(guid=i, text_a=text))
     plm, tokenizer, model_config, WrapperClass = load_plm("bert", "bert-base-cased")
     promptTemplate = ManualTemplate(
         text='{"placeholder":"text_a"} It was {"mask"}',
@@ -117,10 +107,7 @@ def work(args):
     )
     promptVerbalizer = ManualVerbalizer(
         classes=classes,
-        label_words={
-            "negative": ["bad"],
-            "positive": ["good", "wonderful", "great"],
-        },
+        label_words=label_words,
         tokenizer=tokenizer,
     )
     promptModel = PromptForClassification(
@@ -136,11 +123,15 @@ def work(args):
     )
     # making zero-shot inference using pretrained MLM with prompt
     promptModel.eval()
+    fout = open(os.path.join(args.save_dir, "prompt_test.txt"), 'w')
     with torch.no_grad():
-        for batch in data_loader:
+        for batch in tqdm(data_loader.tensor_dataset):
             logits = promptModel(batch)
             preds = torch.argmax(logits, dim=-1)
-            print(classes[preds])
+            res = classes[preds]
+            fout.write(res)
+            fout.write("\n")
+
     # predictions would be 2, 1, 0 for classes 'positive', 'neutral' ,'negative'
 
 
@@ -166,4 +157,5 @@ if __name__ == '__main__':
     os.makedirs(args.save_dir)
 
     logger = setup_logger("Prompt", args.save_dir)
+    os.environ["CUDA_VISIBLE_DEVICES"] = '6'
     work(args)

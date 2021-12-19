@@ -14,12 +14,74 @@ from src.models.mlm import InputExample, InputFeatures
 
 
 class ManualTemplate(nn.Module):
+    registered_inputflag_names = ["loss_ids", "shortenable_ids"]
+
     def __init__(self, text, tokenizer,
                  placeholder_mapping: dict = {'<text_a>': 'text_a', '<text_b>': 'text_b'}):
         super().__init__()
         self.text = text
         self.tokenizer = tokenizer
         self.placeholder_mapping = placeholder_mapping
+        self.mixed_token_start = "{"
+        self.mixed_token_end = "}"
+        self.on_text_set()
+
+    def on_text_set(self):
+        """
+        when template text was set
+
+        1. parse text
+        """
+        self.text = self.parse_text(self.text)
+
+    def parse_text(self, text: str) -> List[Dict]:
+        parsed = []
+        i = 0
+        while i < len(text):
+            d = {"add_prefix_space": ' ' if (i > 0 and text[i - 1] == ' ') else ''}
+            while i < len(text) and text[i] == ' ':
+                d["add_prefix_space"] = ' '
+                i = i + 1
+            if i == len(text): break
+
+            if text[i] != self.mixed_token_start:
+                j = i + 1
+                while j < len(text):
+                    if text[j] == self.mixed_token_start:
+                        break
+                    j = j + 1
+                d["text"] = text[i:j].rstrip(' ')
+                i = j
+
+            else:
+                j = i + 1
+                mixed_token_cnt = 1  # { {} {} } nested support
+                while j < len(text):
+                    if text[j] == self.mixed_token_end:
+                        mixed_token_cnt -= 1
+                        if mixed_token_cnt == 0: break
+                    elif text[j] == self.mixed_token_start:
+                        mixed_token_cnt += 1
+                    j = j + 1
+                if j == len(text):
+                    raise ValueError(
+                        f"mixed_token_start {self.mixed_token_start} at position {i} has no corresponding mixed_token_end {self.mixed_token_end}")
+                dict_str = '{' + text[i + 1:j] + '}'
+                try:
+                    val = eval(dict_str)
+                    if isinstance(val, set):
+                        val = {k: None for k in val}
+                    d.update(val)
+                except:
+                    import traceback
+                    print(traceback.format_exc())
+                    print(f"syntax error in {dict_str}")
+                    exit()
+                i = j + 1
+
+            parsed.append(d)
+
+        return parsed
 
     def process_batch(self, batch):
         return batch
@@ -36,7 +98,7 @@ class ManualTemplate(nn.Module):
     def incorporate_text_example(self,
                                  example: InputExample
                                  ):
-        text = copy.deepcopy(self.text)
+        text = self.text.copy()
         for i, d in enumerate(text):
             if 'placeholder' in d:
                 text[i] = d["add_prefix_space"] + d.get("post_processing", lambda x: x)(
@@ -110,15 +172,79 @@ class ManualTemplate(nn.Module):
         else:
             raise TypeError("InputExample")
 
+    def get_default_loss_ids(self) -> List[int]:
+        '''Get the loss indices for the template using mask.
+        e.g. when self.text is ``'{"placeholder": "text_a"}. {"meta": "word"} is {"mask"}.'``,
+        output is ``[0, 0, 0, 0, 1, 0]``.
+        Returns:
+            :obj:`List[int]`: A list of integers in the range [0, 1]:
+
+            - 1 for a masked tokens.
+            - 0 for a sequence tokens.
+        '''
+        return [1 if 'mask' in d else 0 for d in self.text]
+
+    def get_default_shortenable_ids(self) -> List[int]:
+        """Every template needs shortenable_ids, denoting which part of the template can be trucate to fit
+        the language model's ``max_seq_length``. Default: the input text is shortenable, while the template text and other
+        special tokens are not shortenable.
+        e.g. when self.text is ``'{"placeholder": "text_a"} {"placeholder": "text_b", "shortenable": False} {"meta": "word"} is {"mask"}.'``,
+        output is ``[1, 0, 0, 0, 0, 0, 0]``.
+
+        Returns:
+            :obj:`List[int]`: A list of integers in the range ``[0, 1]``:
+            - 1 for the input tokens.
+            - 0 for the template sequence tokens.
+        """
+        idx = []
+        for d in self.text:
+            if 'shortenable' in d:
+                idx.append(1 if d['shortenable'] else 0)
+            else:
+                idx.append(1 if 'placeholder' in d else 0)
+        return idx
+
 
 class ManualVerbalizer(nn.Module):
-    def __init__(self, classes, label_words, tokenizer, post_log_softmax: Optional[bool] = True):
+    def __init__(self, classes, label_words, tokenizer,
+                 multi_token_handler: Optional[bool] = "first",
+                 post_log_softmax: Optional[bool] = True):
         super().__init__()
         self.classes = classes
         self.label_words = label_words
         self.tokenizer = tokenizer
         self.post_log_softmax = post_log_softmax
         self.num_classes = len(classes)
+        self.multi_token_handler = multi_token_handler
+        self.generate_parameters()
+
+    def generate_parameters(self):
+        r"""In basic manual template, the parameters are generated from label words directly.
+        In this implementation, the label_words should not be tokenized into more than one token.
+        """
+        all_ids = []
+        for words_per_label in self.label_words:
+            ids_per_label = []
+            for word in words_per_label:
+                ids = self.tokenizer.encode(word, add_special_tokens=False)
+                ids_per_label.append(ids)
+            all_ids.append(ids_per_label)
+
+        max_len = max([max([len(ids) for ids in ids_per_label]) for ids_per_label in all_ids])
+        max_num_label_words = max([len(ids_per_label) for ids_per_label in all_ids])
+        words_ids_mask = torch.zeros(max_num_label_words, max_len)
+        words_ids_mask = [[[1] * len(ids) + [0] * (max_len - len(ids)) for ids in ids_per_label]
+                          + [[0] * max_len] * (max_num_label_words - len(ids_per_label))
+                          for ids_per_label in all_ids]
+        words_ids = [[ids + [0] * (max_len - len(ids)) for ids in ids_per_label]
+                     + [[0] * max_len] * (max_num_label_words - len(ids_per_label))
+                     for ids_per_label in all_ids]
+
+        words_ids_tensor = torch.tensor(words_ids)
+        words_ids_mask = torch.tensor(words_ids_mask)
+        self.label_words_ids = nn.Parameter(words_ids_tensor, requires_grad=False)
+        self.words_ids_mask = nn.Parameter(words_ids_mask, requires_grad=False)  # A 3-d mask
+        self.label_words_mask = nn.Parameter(torch.clamp(words_ids_mask.sum(dim=-1), max=1), requires_grad=False)
 
     def gather_outputs(self, outputs):
         r""" retrieve useful output for the verbalizer from the whole model ouput
@@ -216,6 +342,30 @@ class ManualVerbalizer(nn.Module):
         label_words_logits -= 10000 * (1 - self.label_words_mask)
         return label_words_logits
 
+    def handle_multi_token(self, label_words_logits, mask):
+        r"""
+        Support multiple methods to handle the multi tokens produced by the tokenizer.
+        We suggest using 'first' or 'max' if the some parts of the tokenization is not meaningful.
+        Can broadcast to 3-d tensor.
+
+        Args:
+            label_words_logits (:obj:`torch.Tensor`):
+
+        Returns:
+            :obj:`torch.Tensor`
+        """
+        if self.multi_token_handler == "first":
+            label_words_logits = label_words_logits.select(dim=-1, index=0)
+        elif self.multi_token_handler == "max":
+            label_words_logits = label_words_logits - 1000 * (1 - mask.unsqueeze(0))
+            label_words_logits = label_words_logits.max(dim=-1).values
+        elif self.multi_token_handler == "mean":
+            label_words_logits = (label_words_logits * mask.unsqueeze(0)).sum(dim=-1) / (
+                    mask.unsqueeze(0).sum(dim=-1) + 1e-15)
+        else:
+            raise ValueError("multi_token_handler {} not configured".format(self.multi_token_handler))
+        return label_words_logits
+
 
 class PromptModel(nn.Module):
     r'''``PromptModel`` is the encapsulation of ``Template`` and the ``pre-trained model``,
@@ -245,6 +395,7 @@ class PromptModel(nn.Module):
             self.plm.eval()
             for param in self.plm.parameters():
                 param.requires_grad = False
+        self.forward_keys = signature(self.plm.forward).args
 
     def train(self, mode: bool = True):
         if not isinstance(mode, bool):
@@ -262,7 +413,12 @@ class PromptModel(nn.Module):
         Args:
             batch (:obj:`Union[Dict, InputFeatures]`): The input features of batchified data sequences.
         """
+        if isinstance(batch, InputFeatures):
+            batch = batch.to_dict()
         input_batch = {key: batch[key] for key in batch if key in self.forward_keys}
+        # default batch size is 1
+        for k, tensor in input_batch.items():
+            input_batch[k] = tensor.unsqueeze(0)
         outputs = self.plm(**input_batch, output_hidden_states=True)
         outputs = self.template.post_processing_outputs(outputs)
         return outputs
@@ -323,8 +479,13 @@ class PromptForClassification(nn.Module):
             :obj:`torch.Tensor`: The extracted outputs of ``<mask>`` tokens.
 
         """
-        outputs = outputs[torch.where(batch['loss_ids'] > 0)]
-        outputs = outputs.view(batch['loss_ids'].shape[0], -1, outputs.shape[1])
+        if isinstance(batch, InputFeatures):
+            batch = batch.to_dict()
+        # print("outputs.shape", outputs.shape)
+        idx = torch.where(batch['loss_ids'] > 0)
+        # print("idx", idx)
+        outputs = outputs[:, torch.where(batch['loss_ids'] > 0), :]
+        # outputs = outputs.view(batch['loss_ids'].shape[0], -1, outputs.shape[1])
         if outputs.shape[1] == 1:
             outputs = outputs.view(outputs.shape[0], outputs.shape[2])
         return outputs
